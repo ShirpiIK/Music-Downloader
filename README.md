@@ -9,7 +9,8 @@ A powerful, command-line based Python script for Android (Termux) that downloads
 * **Auto-Lyrics:** Automatically fetches and saves synced `.lrc` files from lrclib.net.
 * **Smart Syncing:** Uses `termux-media-scan` to automatically push downloaded songs directly to the native Android Music Player.
 * **Custom Bitrate:** Choose audio quality from 128kbps up to 320kbps.
-* **Batch Download:** Download entire movie albums at once.
+* **Batch Download:** Downlfavouritee movie albums at once.
+* **Playlist Download:** Download your favourite songs from playlist.
 
 ## 🛠️ Prerequisites
 You need an Android phone with **Termux** and the **Termux:API** app installed.
