@@ -1,0 +1,11 @@
+# Temporary processing files
+temp.mp3
+cover.jpg
+
+# Downloaded music and lyrics (Don't upload to GitHub)
+*.mp3
+*.lrc
+
+# Python cache
+__pycache__/
+*.pyc
