@@ -1,22 +1,19 @@
-import os
+ import os
 import requests
 import readline
 
 DOWNLOAD_PATH = "/data/data/com.termux/files/home/storage/shared/Download/Myfy"
 os.makedirs(DOWNLOAD_PATH, exist_ok=True)
 
-# Navigation Exceptions
 class GoHome(Exception): pass
 class GoBack(Exception): pass
 
-# Smart Input function
 def ask(prompt_text):
     ans = input(prompt_text).strip().upper()
     if ans == '0': raise GoHome()
     if ans == 'B': raise GoBack()
     return ans
 
-# Feature 1: Pagination (10 items per page)
 def paginate_list(items, format_func, title):
     total = len(items)
     if total == 0:
@@ -87,7 +84,6 @@ def download_track(track, bitrate):
     os.system(f"ffmpeg -y -i temp.mp3 -i cover.jpg -map 0:0 -map 1:0 -c copy -id3v2_version 3 -metadata title=\"{title}\" -metadata artist=\"{artist}\" -metadata album=\"{album}\" \"{final_path}\" -loglevel quiet")
     os.system(f"termux-media-scan '{final_path}'")
     
-    # Feature 2: Robust Lyrics (LRC) logic
     print("🔍 Searching for lyrics...")
     lrc_path = f"{DOWNLOAD_PATH}/{title}_{bitrate}k.lrc"
     try:
@@ -117,7 +113,32 @@ def download_track(track, bitrate):
     if os.path.exists("cover.jpg"): os.remove("cover.jpg")
     print(f"✅ Success! '{title}' downloaded.")
 
-# Smart Navigation Flow for Movies
+# NEW FEATURE: URL Downloader (Handles Playlists & Single URLs)
+def download_url():
+    try:
+        url = ask("\n🔗 Paste YouTube/Soundcloud URL (Playlist or Song) (Enter: B=Back, 0=Home): ")
+        bitrate = get_quality_choice()
+        
+        print(f"\n⏳ Analyzing URL and starting download. If it's a playlist, this might take a while...")
+        
+        output_template = f"{DOWNLOAD_PATH}/%(title)s_{bitrate}k.%(ext)s"
+        
+        # yt-dlp magic: --embed-thumbnail and --add-metadata auto-fetches cover and tags from YouTube
+        cmd = (f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k "
+               f"--embed-thumbnail --add-metadata "
+               f"-o '{output_template}' '{url}'")
+        
+        os.system(cmd)
+        
+        # Scan the whole folder to ensure all playlist songs appear in the Music Player
+        print("\n🔄 Syncing new files with Android Music Player...")
+        os.system(f"termux-media-scan -r '{DOWNLOAD_PATH}'")
+        
+        print("✅ URL/Playlist download complete!")
+        
+    except GoBack: return
+    except GoHome: raise GoHome()
+
 def search_movie():
     while True:
         try:
@@ -145,12 +166,11 @@ def search_movie():
                             else:
                                 selections = [int(x.strip())-1 for x in dl_choice.split(',')]
                                 for s in selections: download_track(tracks[s], bitrate)
-                            return # Returns to Home after success
-                        except GoBack: pass # Returns to Album List
-                except GoBack: break # Returns to Movie search
-        except GoBack: return # Returns to Main menu
+                            return 
+                        except GoBack: pass 
+                except GoBack: break 
+        except GoBack: return 
 
-# Smart Navigation Flow for Songs
 def search_song():
     while True:
         try:
@@ -173,14 +193,18 @@ def main():
     while True:
         try:
             print("\n" + "="*45 + "\n🎵 Pro Music Downloader (Ultimate UI) 🎵\n" + "="*45)
-            print("1. Search by Movie/Album | 2. Search by Song | 3. Exit")
-            choice = input("\nChoice (1, 2 or 3): ").strip()
+            print("1. Search by Movie/Album")
+            print("2. Search by Song")
+            print("3. Download via Link (Playlist/Song)")
+            print("4. Exit")
+            choice = input("\nChoice (1, 2, 3 or 4): ").strip()
             
-            if choice == '3':
+            if choice == '4':
                 print("👋 Exiting App. Bye Bye!")
                 break
             elif choice == '1': search_movie()
             elif choice == '2': search_song()
+            elif choice == '3': download_url()
             else: print("❌ Invalid choice. Please try again.")
         except GoHome:
             print("\n🏠 Returning to Home Menu...")
@@ -191,4 +215,4 @@ def main():
             print(f"\n❌ An error occurred. Returning to Home Menu.")
             
 if __name__ == "__main__":
-    main()            
+    main()                               
