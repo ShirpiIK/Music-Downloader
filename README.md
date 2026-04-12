@@ -79,4 +79,8 @@ Run the script using `python music_bot.py`. You will be greeted with a Main Menu
   `Internal Storage/Download/Myfy`
   *(The script automatically creates this folder if it doesn't exist).*
 
-* **Music Player Integration:** Android OS sometimes ignores new files downloaded via the terminal. Myfy solves this using a built-in Termux command (`termux-media-scan`). Once a song is downloaded, this command forcefully pings the Android Media Scanner, ensuring your new tracks appear instantly in apps like Samsung Music, Musicolet, or Poweramp.
+* **Music Player Integration:** Android OS sometimes ignores new files downloaded via the terminal. Myfy solves this using a built-in Termux command
+  ```base
+  termux-media-scan
+  ```
+   Once a song is downloaded, this command forcefully pings the Android Media Scanner, ensuring your new tracks appear instantly in apps like Samsung Music, Musicolet, or Poweramp.
