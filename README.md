@@ -1,30 +1,28 @@
-# Music-Downloader-
+# 🎵 Myfy - Pro Music Downloader (Termux Edition)
 
-# 🎵 Pro Music Downloader (Termux Edition)
-
-A powerful, command-line based Python script for Android (Termux) that downloads 100% pure studio audio without movie dialogues or intros. 
+A powerful, CLI-based pure music downloader built specifically for Android (Termux). Myfy bypasses normal YouTube search algorithms by utilizing the **YouTube Music API**, ensuring you get 100% pure official audio without any lyrical video dialogues or intro/outro interruptions.
 
 ## ✨ Key Features
-* **Double-Layer Filtration:** Uses iTunes API for metadata and duration, matching it with YouTube 'Topic' channels to ensure pure audio extraction.
-* **Auto-Lyrics:** Automatically fetches and saves synced `.lrc` files from lrclib.net.
-* **Smart Syncing:** Uses `termux-media-scan` to automatically push downloaded songs directly to the native Android Music Player.
-* **Custom Bitrate:** Choose audio quality from 128kbps up to 320kbps.
-* **Batch Download:** Downlfavouritee movie albums at once.
-* **Playlist Download:** Download your favourite songs from playlist.
 
-## 🛠️ Prerequisites
-You need an Android phone with **Termux** and the **Termux:API** app installed.
+* **🎧 Pure Official Audio:** Directly hits the YouTube Music database (`ytmusicapi`) to fetch exact studio-quality audio.
+* **🏷️ Auto Meta-Tagging:** Automatically embeds Cover Art, Song Title, Artist, and Album Name into the MP3 file using `ffmpeg`.
+* **📜 Synced Lyrics:** Auto-fetches and saves `.lrc` (synced lyrics) files from LRCLIB for compatible music players.
+* **📋 Smart Search UI:** Interactive command-line interface with pagination. Search directly using Apple Music (iTunes API) data.
+* **🔗 Link / Playlist Downloader:** Paste any YouTube or Soundcloud URL (single track or entire playlist) to download them in your preferred bitrate.
+* **🔄 Auto Media Scan:** Instantly pushes downloaded songs to your Android Music Player using `termux-media-scan`.
+* **🎚️ Custom Bitrate:** Choose your preferred audio quality (128kbps to 320kbps).
 
-1. Update packages and install dependencies:
-   ```bash
-   pkg update && pkg upgrade -y
-   pkg install python ffmpeg termux-api -y
+---
 
-2. Clone this repository and install Python requirements:
-   ```bash 
-   pip install -r requirements.txt
+## 🛠️ Installation & Setup (Termux)
 
-How to Run:
-   Simply start the script using Python:
-   ```bash
-   python music_bot.py
+Follow these steps carefully to set up Myfy on your Android device using Termux.
+
+### 1. Grant Storage Permission
+First, allow Termux to access your internal storage so it can save the songs.
+```bash
+termux-setup-storage
+
+
+### 2. Install Required System Packages
+Update your system and install Python and FFmpeg (used for audio conversion and metadata tagging).
