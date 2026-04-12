@@ -44,8 +44,8 @@ pip install yt-dlp requests ytmusicapi
 Clone this repository and start the application:
 
 ```bash
-git clone <YOUR_GITHUB_REPO_URL_HERE>
-cd <YOUR_REPO_NAME>
+git clone https://github.com/ShirpiIK/Music-Downloader-
+cd music_bot.py
 python music_bot.py
 ```
 *(Note: Replace `<YOUR_GITHUB_REPO_URL_HERE>` and `<YOUR_REPO_NAME>` with your actual GitHub details).*
