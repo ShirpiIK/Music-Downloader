@@ -1,6 +1,7 @@
- import os
+import os
 import requests
 import readline
+from ytmusicapi import YTMusic
 
 DOWNLOAD_PATH = "/data/data/com.termux/files/home/storage/shared/Download/Myfy"
 os.makedirs(DOWNLOAD_PATH, exist_ok=True)
@@ -60,25 +61,42 @@ def download_track(track, bitrate):
     album = track.get('collectionName', 'Unknown').replace('"', '').replace('/', '')
     cover_url = track.get('artworkUrl100', '').replace('100x100bb', '600x600bb')
     
-    duration_ms = track.get('trackTimeMillis', 0)
-    target_sec = duration_ms / 1000
+    # MAGIC STRING CLEANER
+    c_title = title.split('(')[0].split('[')[0].split('-')[0].strip()
+    c_artist = artist.split(',')[0].split('&')[0].strip()
+    c_album = album.split('(')[0].split('[')[0].split('-')[0].strip()
     
-    print(f"\n⏳ Downloading Pure Audio: {title}...")
+    search_base = f"{c_title} {c_artist}"
+    
+    print(f"\n⏳ Downloading Pure Audio: {c_title}...")
     
     if cover_url:
         open("cover.jpg", "wb").write(requests.get(cover_url).content)
     
-    search_query = f"ytsearch10:{title} {artist} Topic audio"
-    min_d = target_sec - 10
-    max_d = target_sec + 10
-    
-    os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k "
-              f"--match-filter \"duration > {min_d} & duration < {max_d}\" "
-              f"--max-downloads 1 -o 'temp.mp3' '{search_query}'")
+    # PRO METHOD: YouTube Music API (Directly hits the music database)
+    ytmusic = YTMusic()
+    try:
+        print("🔍 Scanning YouTube Music database...")
+        search_results = ytmusic.search(search_base, filter="songs", limit=1)
+        
+        if search_results and len(search_results) > 0:
+            video_id = search_results[0]['videoId']
+            yt_url = f"https://music.youtube.com/watch?v={video_id}"
+            print(f"✅ Exact Official Audio found via API! Starting download...")
+            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' '{yt_url}'")
+        else:
+            # BACKUP METHOD: If API fails, standard search without duration limits
+            print("⚠️ API miss. Trying standard YouTube audio fetch...")
+            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' 'ytsearch1:{search_base} official audio'")
+    except Exception as e:
+        print("⚠️ API Error. Trying standard YouTube audio fetch...")
+        os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' 'ytsearch1:{search_base} official audio'")
 
+    # FINAL SAFETY
     if not os.path.exists("temp.mp3"):
-        print("⚠️ Exact duration match not found. Using normal search fallback...")
-        os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' 'ytsearch1:{title} {artist} Topic'")
+        print(f"❌ Error: YouTube-la indha paattu kedaikkala. Download fail aagiduchu.")
+        if os.path.exists("cover.jpg"): os.remove("cover.jpg")
+        return
 
     final_path = f"{DOWNLOAD_PATH}/{title}_{bitrate}k.mp3"
     os.system(f"ffmpeg -y -i temp.mp3 -i cover.jpg -map 0:0 -map 1:0 -c copy -id3v2_version 3 -metadata title=\"{title}\" -metadata artist=\"{artist}\" -metadata album=\"{album}\" \"{final_path}\" -loglevel quiet")
@@ -87,7 +105,7 @@ def download_track(track, bitrate):
     print("🔍 Searching for lyrics...")
     lrc_path = f"{DOWNLOAD_PATH}/{title}_{bitrate}k.lrc"
     try:
-        lrc_data = requests.get("https://lrclib.net/api/search", params={"q": f"{title} {artist}"}).json()
+        lrc_data = requests.get("https://lrclib.net/api/search", params={"track_name": c_title, "artist_name": c_artist, "album_name": c_album}).json()
         found_lyrics = False
         if isinstance(lrc_data, list) and len(lrc_data) > 0:
             for item in lrc_data:
@@ -113,7 +131,6 @@ def download_track(track, bitrate):
     if os.path.exists("cover.jpg"): os.remove("cover.jpg")
     print(f"✅ Success! '{title}' downloaded.")
 
-# NEW FEATURE: URL Downloader (Handles Playlists & Single URLs)
 def download_url():
     try:
         url = ask("\n🔗 Paste YouTube/Soundcloud URL (Playlist or Song) (Enter: B=Back, 0=Home): ")
@@ -123,14 +140,12 @@ def download_url():
         
         output_template = f"{DOWNLOAD_PATH}/%(title)s_{bitrate}k.%(ext)s"
         
-        # yt-dlp magic: --embed-thumbnail and --add-metadata auto-fetches cover and tags from YouTube
         cmd = (f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k "
                f"--embed-thumbnail --add-metadata "
                f"-o '{output_template}' '{url}'")
         
         os.system(cmd)
         
-        # Scan the whole folder to ensure all playlist songs appear in the Music Player
         print("\n🔄 Syncing new files with Android Music Player...")
         os.system(f"termux-media-scan -r '{DOWNLOAD_PATH}'")
         
@@ -143,7 +158,7 @@ def search_movie():
     while True:
         try:
             movie_name = ask("\n🎬 Enter Movie Name (Enter: B=Back, 0=Home): ")
-            data = requests.get(f"https://itunes.apple.com/search?term={movie_name}&entity=album&limit=50").json()
+            data = requests.get(f"https://itunes.apple.com/search?term={movie_name}&entity=album&limit=50&country=IN").json()
             albums = data['results']
             
             while True:
@@ -152,7 +167,7 @@ def search_movie():
                     if idx is None: raise GoBack()
                     
                     album_id = albums[idx]['collectionId']
-                    tracks = requests.get(f"https://itunes.apple.com/lookup?id={album_id}&entity=song").json()['results'][1:]
+                    tracks = requests.get(f"https://itunes.apple.com/lookup?id={album_id}&entity=song&country=IN").json()['results'][1:]
                     
                     while True:
                         try:
@@ -175,7 +190,7 @@ def search_song():
     while True:
         try:
             song_name = ask("\n🎵 Enter Song Name (Enter: B=Back, 0=Home): ")
-            data = requests.get(f"https://itunes.apple.com/search?term={song_name}&entity=song&limit=50").json()
+            data = requests.get(f"https://itunes.apple.com/search?term={song_name}&entity=song&limit=50&country=IN").json()
             songs = data['results']
             
             while True:
@@ -215,4 +230,4 @@ def main():
             print(f"\n❌ An error occurred. Returning to Home Menu.")
             
 if __name__ == "__main__":
-    main()                               
+    main()                    
