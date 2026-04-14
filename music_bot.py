@@ -68,33 +68,62 @@ def download_track(track, bitrate):
     
     search_base = f"{c_title} {c_artist}"
     
-    print(f"\n⏳ Downloading Pure Audio: {c_title}...")
+    # TARGET DURATION (iTunes la irundhu varradhu)
+    duration_ms = track.get('trackTimeMillis', 0)
+    target_sec = int(duration_ms / 1000)
+    
+    print(f"\n⏳ Downloading Pure Audio: {c_title} (Target: {target_sec}s)...")
     
     if cover_url:
         open("cover.jpg", "wb").write(requests.get(cover_url).content)
     
-    # PRO METHOD: YouTube Music API (Directly hits the music database)
+    # PRO METHOD: YouTube Music API - Duration Filter
     ytmusic = YTMusic()
     try:
-        print("🔍 Scanning YouTube Music database...")
-        search_results = ytmusic.search(search_base, filter="songs", limit=1)
+        print("🔍 Scanning top 10 YouTube Music results for EXACT duration match...")
+        search_results = ytmusic.search(search_base, filter="songs", limit=10)
         
-        if search_results and len(search_results) > 0:
-            video_id = search_results[0]['videoId']
+        video_id = None
+        if search_results:
+            for result in search_results:
+                # API tharra paattoda duration ah check pandrom
+                res_sec = result.get('duration_seconds')
+                
+                # Oruvela duration string aah vandha atha seconds kku matha logic
+                if not res_sec and result.get('duration'):
+                    try:
+                        parts = str(result['duration']).split(':')
+                        if len(parts) == 2: res_sec = int(parts[0])*60 + int(parts[1])
+                        elif len(parts) == 3: res_sec = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
+                    except: pass
+                
+                # Match aagudha nu check pandrom (+/- 4 seconds margin)
+                if res_sec:
+                    if abs(res_sec - target_sec) <= 4:
+                        video_id = result['videoId']
+                        print(f"✅ Exact ID Match Found! (Duration: {res_sec}s)")
+                        break
+        
+        if video_id:
             yt_url = f"https://music.youtube.com/watch?v={video_id}"
-            print(f"✅ Exact Official Audio found via API! Starting download...")
             os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' '{yt_url}'")
         else:
-            # BACKUP METHOD: If API fails, standard search without duration limits
-            print("⚠️ API miss. Trying standard YouTube audio fetch...")
-            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' 'ytsearch1:{search_base} official audio'")
+            # BACKUP METHOD: API la exact duration match aagalana, normal youtube la theda povom
+            print("⚠️ API miss (Duration mismatch). Trying standard YouTube audio fetch...")
+            min_d = target_sec - 4
+            max_d = target_sec + 4
+            strict_filter = f'--match-filter "duration >= {min_d} & duration <= {max_d}"'
+            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k {strict_filter} --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} Topic official audio'")
     except Exception as e:
         print("⚠️ API Error. Trying standard YouTube audio fetch...")
-        os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' 'ytsearch1:{search_base} official audio'")
+        min_d = target_sec - 4
+        max_d = target_sec + 4
+        strict_filter = f'--match-filter "duration >= {min_d} & duration <= {max_d}"'
+        os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k {strict_filter} --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} Topic official audio'")
 
     # FINAL SAFETY
     if not os.path.exists("temp.mp3"):
-        print(f"❌ Error: YouTube-la indha paattu kedaikkala. Download fail aagiduchu.")
+        print(f"❌ Error: YouTube-la indha paattu exact duration-la kedaikkala. Download fail aagiduchu.")
         if os.path.exists("cover.jpg"): os.remove("cover.jpg")
         return
 
@@ -230,4 +259,5 @@ def main():
             print(f"\n❌ An error occurred. Returning to Home Menu.")
             
 if __name__ == "__main__":
-    main()                    
+    main()        
+                         
