@@ -259,5 +259,5 @@ def main():
             print(f"\n❌ An error occurred. Returning to Home Menu.")
             
 if __name__ == "__main__":
-    main()        
-                         
+    main() 
+                            
