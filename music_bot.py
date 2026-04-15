@@ -61,35 +61,39 @@ def download_track(track, bitrate):
     album = track.get('collectionName', 'Unknown').replace('"', '').replace('/', '')
     cover_url = track.get('artworkUrl100', '').replace('100x100bb', '600x600bb')
     
-    # MAGIC STRING CLEANER
     c_title = title.split('(')[0].split('[')[0].split('-')[0].strip()
     c_artist = artist.split(',')[0].split('&')[0].strip()
     c_album = album.split('(')[0].split('[')[0].split('-')[0].strip()
     
-    search_base = f"{c_title} {c_artist}"
+    # Dynamic Language Auto-Detection
+    known_langs = ['tamil', 'telugu', 'hindi', 'malayalam', 'kannada', 'marathi', 'bengali', 'english']
+    target_lang = ""
+    for lang in known_langs:
+        if lang in album.lower() or lang in title.lower():
+            target_lang = lang
+            break
     
-    # TARGET DURATION (iTunes la irundhu varradhu)
+    search_base = f"{c_title} {c_artist}"
+    if target_lang:
+        search_base += f" {target_lang}"
+    
     duration_ms = track.get('trackTimeMillis', 0)
     target_sec = int(duration_ms / 1000)
     
-    print(f"\n⏳ Downloading Pure Audio: {c_title} (Target: {target_sec}s)...")
+    print(f"\n⏳ Downloading Pure Audio: {title} (Target: {target_sec}s)...")
     
     if cover_url:
         open("cover.jpg", "wb").write(requests.get(cover_url).content)
     
-    # PRO METHOD: YouTube Music API - Duration Filter
     ytmusic = YTMusic()
     try:
-        print("🔍 Scanning top 10 YouTube Music results for EXACT duration match...")
+        print(f"🔍 Scanning YouTube Music for EXACT match...")
         search_results = ytmusic.search(search_base, filter="songs", limit=10)
         
         video_id = None
         if search_results:
             for result in search_results:
-                # API tharra paattoda duration ah check pandrom
                 res_sec = result.get('duration_seconds')
-                
-                # Oruvela duration string aah vandha atha seconds kku matha logic
                 if not res_sec and result.get('duration'):
                     try:
                         parts = str(result['duration']).split(':')
@@ -97,33 +101,38 @@ def download_track(track, bitrate):
                         elif len(parts) == 3: res_sec = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
                     except: pass
                 
-                # Match aagudha nu check pandrom (+/- 4 seconds margin)
-                if res_sec:
-                    if abs(res_sec - target_sec) <= 4:
+                if res_sec and abs(res_sec - target_sec) <= 4:
+                    res_album = result.get('album', {}).get('name', '').lower() if result.get('album') else ''
+                    res_title = result.get('title', '').lower()
+                    
+                    if target_lang:
+                        if target_lang in res_album or target_lang in res_title:
+                            video_id = result['videoId']
+                            print(f"✅ Strict {target_lang.capitalize()} Audio Match Found! (Duration: {res_sec}s)")
+                            break
+                    else:
                         video_id = result['videoId']
-                        print(f"✅ Exact ID Match Found! (Duration: {res_sec}s)")
+                        print(f"✅ Exact Audio ID Match Found! (Duration: {res_sec}s)")
                         break
         
         if video_id:
             yt_url = f"https://music.youtube.com/watch?v={video_id}"
             os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' '{yt_url}'")
         else:
-            # BACKUP METHOD: API la exact duration match aagalana, normal youtube la theda povom
-            print("⚠️ API miss (Duration mismatch). Trying standard YouTube audio fetch...")
+            print("⚠️ API strict match missed. Trying standard YouTube search...")
             min_d = target_sec - 4
             max_d = target_sec + 4
             strict_filter = f'--match-filter "duration >= {min_d} & duration <= {max_d}"'
             os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k {strict_filter} --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} Topic official audio'")
     except Exception as e:
-        print("⚠️ API Error. Trying standard YouTube audio fetch...")
+        print("⚠️ API Error. Trying standard YouTube search...")
         min_d = target_sec - 4
         max_d = target_sec + 4
         strict_filter = f'--match-filter "duration >= {min_d} & duration <= {max_d}"'
         os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k {strict_filter} --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} Topic official audio'")
 
-    # FINAL SAFETY
     if not os.path.exists("temp.mp3"):
-        print(f"❌ Error: YouTube-la indha paattu exact duration-la kedaikkala. Download fail aagiduchu.")
+        print(f"❌ Error: Song download fail aagiduchu.")
         if os.path.exists("cover.jpg"): os.remove("cover.jpg")
         return
 
@@ -131,28 +140,79 @@ def download_track(track, bitrate):
     os.system(f"ffmpeg -y -i temp.mp3 -i cover.jpg -map 0:0 -map 1:0 -c copy -id3v2_version 3 -metadata title=\"{title}\" -metadata artist=\"{artist}\" -metadata album=\"{album}\" \"{final_path}\" -loglevel quiet")
     os.system(f"termux-media-scan '{final_path}'")
     
-    print("🔍 Searching for lyrics...")
+    # ---------------------------------------------------------
+    # 🔥 ULTIMATE STRICT LYRICS MATCHER LOGIC 🔥
+    # ---------------------------------------------------------
+    lrc_search_title = f"{c_title} {target_lang}".strip() if target_lang else c_title
+    print(f"🔍 Searching for purely synced lyrics ({lrc_search_title})...")
+    
     lrc_path = f"{DOWNLOAD_PATH}/{title}_{bitrate}k.lrc"
     try:
-        lrc_data = requests.get("https://lrclib.net/api/search", params={"track_name": c_title, "artist_name": c_artist, "album_name": c_album}).json()
-        found_lyrics = False
+        # Step 1: Explicit language string search
+        lrc_data = requests.get("https://lrclib.net/api/search", params={"track_name": lrc_search_title, "artist_name": c_artist}).json()
+        
+        # Step 2: Fallback to normal title search if explicit search fails
+        if not lrc_data or len(lrc_data) == 0:
+            lrc_data = requests.get("https://lrclib.net/api/search", params={"track_name": c_title, "artist_name": c_artist}).json()
+
         if isinstance(lrc_data, list) and len(lrc_data) > 0:
-            for item in lrc_data:
-                if item.get('syncedLyrics'):
-                    open(lrc_path, 'w', encoding='utf-8').write(item['syncedLyrics'])
-                    found_lyrics = True
-                    break
-            if not found_lyrics and lrc_data[0].get('plainLyrics'):
-                open(lrc_path, 'w', encoding='utf-8').write(lrc_data[0]['plainLyrics'])
-                found_lyrics = True
-                
-            if found_lyrics:
-                os.system(f"termux-media-scan '{lrc_path}'")
-                print("📜 Lyrics saved successfully!")
+            # Only keep synced lyrics
+            synced_only_data = [item for item in lrc_data if item.get('syncedLyrics')]
+            
+            if not synced_only_data:
+                print("⚠️ Synced Lyrics not found (Only plain text available, skipped).")
             else:
-                print("⚠️ Lyrics not found for this song in the database.")
+                selected_lrc = None
+                
+                if target_lang:
+                    # STRICT MODE: Language is requested. We MUST match the language.
+                    # Filter 1: Language + Duration Match
+                    for item in synced_only_data:
+                        item_album = item.get('albumName', '').lower() if item.get('albumName') else ''
+                        item_title = item.get('trackName', '').lower() if item.get('trackName') else ''
+                        item_dur = item.get('duration', 0)
+                        
+                        if (target_lang in item_album or target_lang in item_title) and (item_dur and abs(item_dur - target_sec) <= 4):
+                            selected_lrc = item
+                            break
+                    
+                    # Filter 2: Language Match Only (if duration is slightly off)
+                    if not selected_lrc:
+                        for item in synced_only_data:
+                            item_album = item.get('albumName', '').lower() if item.get('albumName') else ''
+                            item_title = item.get('trackName', '').lower() if item.get('trackName') else ''
+                            if target_lang in item_album or target_lang in item_title:
+                                selected_lrc = item
+                                break
+                    
+                    # NOTE: No absolute fallback here! If target_lang is set and not found, selected_lrc remains None.
+                
+                else:
+                    # NORMAL MODE: No language requested. Use standard fallbacks.
+                    # Filter 3: Duration Match Only
+                    for item in synced_only_data:
+                        item_dur = item.get('duration', 0)
+                        if item_dur and abs(item_dur - target_sec) <= 4:
+                            selected_lrc = item
+                            break
+                    
+                    # Filter 4: Absolute Fallback (First result)
+                    if not selected_lrc:
+                        selected_lrc = synced_only_data[0]
+                        
+                # Final check and save
+                if selected_lrc:
+                    open(lrc_path, 'w', encoding='utf-8').write(selected_lrc['syncedLyrics'])
+                    os.system(f"termux-media-scan '{lrc_path}'")
+                    lang_display = target_lang.capitalize() if target_lang else "Exact"
+                    print(f"📜 {lang_display} Synced Lyrics saved successfully!")
+                else:
+                    if target_lang:
+                        print(f"⚠️ {target_lang.capitalize()} Synced Lyrics not found in database. Skipped to prevent wrong language.")
+                    else:
+                        print("⚠️ Lyrics not found in database.")
         else:
-            print("⚠️ Lyrics not found for this song in the database.")
+            print("⚠️ Lyrics not found in database.")
     except Exception:
         print("❌ Lyrics API Error. Skipping lyrics.")
 
@@ -165,19 +225,15 @@ def download_url():
         url = ask("\n🔗 Paste YouTube/Soundcloud URL (Playlist or Song) (Enter: B=Back, 0=Home): ")
         bitrate = get_quality_choice()
         
-        print(f"\n⏳ Analyzing URL and starting download. If it's a playlist, this might take a while...")
-        
+        print(f"\n⏳ Analyzing URL and starting download...")
         output_template = f"{DOWNLOAD_PATH}/%(title)s_{bitrate}k.%(ext)s"
-        
         cmd = (f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k "
                f"--embed-thumbnail --add-metadata "
                f"-o '{output_template}' '{url}'")
-        
         os.system(cmd)
         
         print("\n🔄 Syncing new files with Android Music Player...")
         os.system(f"termux-media-scan -r '{DOWNLOAD_PATH}'")
-        
         print("✅ URL/Playlist download complete!")
         
     except GoBack: return
@@ -259,5 +315,4 @@ def main():
             print(f"\n❌ An error occurred. Returning to Home Menu.")
             
 if __name__ == "__main__":
-    main() 
-                            
+    main()
