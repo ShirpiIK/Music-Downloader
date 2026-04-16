@@ -65,7 +65,6 @@ def download_track(track, bitrate):
     c_artist = artist.split(',')[0].split('&')[0].strip()
     c_album = album.split('(')[0].split('[')[0].split('-')[0].strip()
     
-    # Dynamic Language Auto-Detection
     known_langs = ['tamil', 'telugu', 'hindi', 'malayalam', 'kannada', 'marathi', 'bengali', 'english']
     target_lang = ""
     for lang in known_langs:
@@ -83,7 +82,9 @@ def download_track(track, bitrate):
     print(f"\n⏳ Downloading Pure Audio: {title} (Target: {target_sec}s)...")
     
     if cover_url:
-        open("cover.jpg", "wb").write(requests.get(cover_url).content)
+        try:
+            open("cover.jpg", "wb").write(requests.get(cover_url).content)
+        except: pass
     
     ytmusic = YTMusic()
     try:
@@ -125,7 +126,7 @@ def download_track(track, bitrate):
             strict_filter = f'--match-filter "duration >= {min_d} & duration <= {max_d}"'
             os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k {strict_filter} --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} Topic official audio'")
     except Exception as e:
-        print("⚠️ API Error. Trying standard YouTube search...")
+        print(f"⚠️ API Error ({e}). Trying standard YouTube search...")
         min_d = target_sec - 4
         max_d = target_sec + 4
         strict_filter = f'--match-filter "duration >= {min_d} & duration <= {max_d}"'
@@ -140,23 +141,17 @@ def download_track(track, bitrate):
     os.system(f"ffmpeg -y -i temp.mp3 -i cover.jpg -map 0:0 -map 1:0 -c copy -id3v2_version 3 -metadata title=\"{title}\" -metadata artist=\"{artist}\" -metadata album=\"{album}\" \"{final_path}\" -loglevel quiet")
     os.system(f"termux-media-scan '{final_path}'")
     
-    # ---------------------------------------------------------
-    # 🔥 ULTIMATE STRICT LYRICS MATCHER LOGIC 🔥
-    # ---------------------------------------------------------
     lrc_search_title = f"{c_title} {target_lang}".strip() if target_lang else c_title
     print(f"🔍 Searching for purely synced lyrics ({lrc_search_title})...")
     
     lrc_path = f"{DOWNLOAD_PATH}/{title}_{bitrate}k.lrc"
     try:
-        # Step 1: Explicit language string search
         lrc_data = requests.get("https://lrclib.net/api/search", params={"track_name": lrc_search_title, "artist_name": c_artist}).json()
         
-        # Step 2: Fallback to normal title search if explicit search fails
         if not lrc_data or len(lrc_data) == 0:
             lrc_data = requests.get("https://lrclib.net/api/search", params={"track_name": c_title, "artist_name": c_artist}).json()
 
         if isinstance(lrc_data, list) and len(lrc_data) > 0:
-            # Only keep synced lyrics
             synced_only_data = [item for item in lrc_data if item.get('syncedLyrics')]
             
             if not synced_only_data:
@@ -165,8 +160,6 @@ def download_track(track, bitrate):
                 selected_lrc = None
                 
                 if target_lang:
-                    # STRICT MODE: Language is requested. We MUST match the language.
-                    # Filter 1: Language + Duration Match
                     for item in synced_only_data:
                         item_album = item.get('albumName', '').lower() if item.get('albumName') else ''
                         item_title = item.get('trackName', '').lower() if item.get('trackName') else ''
@@ -176,7 +169,6 @@ def download_track(track, bitrate):
                             selected_lrc = item
                             break
                     
-                    # Filter 2: Language Match Only (if duration is slightly off)
                     if not selected_lrc:
                         for item in synced_only_data:
                             item_album = item.get('albumName', '').lower() if item.get('albumName') else ''
@@ -184,23 +176,16 @@ def download_track(track, bitrate):
                             if target_lang in item_album or target_lang in item_title:
                                 selected_lrc = item
                                 break
-                    
-                    # NOTE: No absolute fallback here! If target_lang is set and not found, selected_lrc remains None.
-                
                 else:
-                    # NORMAL MODE: No language requested. Use standard fallbacks.
-                    # Filter 3: Duration Match Only
                     for item in synced_only_data:
                         item_dur = item.get('duration', 0)
                         if item_dur and abs(item_dur - target_sec) <= 4:
                             selected_lrc = item
                             break
                     
-                    # Filter 4: Absolute Fallback (First result)
                     if not selected_lrc:
                         selected_lrc = synced_only_data[0]
                         
-                # Final check and save
                 if selected_lrc:
                     open(lrc_path, 'w', encoding='utf-8').write(selected_lrc['syncedLyrics'])
                     os.system(f"termux-media-scan '{lrc_path}'")
@@ -213,8 +198,8 @@ def download_track(track, bitrate):
                         print("⚠️ Lyrics not found in database.")
         else:
             print("⚠️ Lyrics not found in database.")
-    except Exception:
-        print("❌ Lyrics API Error. Skipping lyrics.")
+    except Exception as e:
+        print(f"❌ Lyrics API Error: {e}. Skipping lyrics.")
 
     if os.path.exists("temp.mp3"): os.remove("temp.mp3")
     if os.path.exists("cover.jpg"): os.remove("cover.jpg")
@@ -243,21 +228,27 @@ def search_movie():
     while True:
         try:
             movie_name = ask("\n🎬 Enter Movie Name (Enter: B=Back, 0=Home): ")
-            data = requests.get(f"https://itunes.apple.com/search?term={movie_name}&entity=album&limit=50&country=IN").json()
-            albums = data['results']
+            
+            # 🔴 FIX 1: URL Safe Search 
+            params = {"term": movie_name, "entity": "album", "limit": 50, "country": "IN"}
+            data = requests.get("https://itunes.apple.com/search", params=params).json()
+            albums = data.get('results', [])
             
             while True:
                 try:
-                    idx = paginate_list(albums, lambda i, a: f"{i+1}. {a['collectionName']} ({a['artistName']})", "Albums")
+                    # 🔴 FIX 2: Safe Key Lookups (Missing Artist Name prechanaiyai thadukka)
+                    idx = paginate_list(albums, lambda i, a: f"{i+1}. {a.get('collectionName', 'Unknown')} ({a.get('artistName', 'Unknown')})", "Albums")
                     if idx is None: raise GoBack()
                     
                     album_id = albums[idx]['collectionId']
-                    tracks = requests.get(f"https://itunes.apple.com/lookup?id={album_id}&entity=song&country=IN").json()['results'][1:]
+                    
+                    lookup_params = {"id": album_id, "entity": "song", "country": "IN"}
+                    tracks = requests.get("https://itunes.apple.com/lookup", params=lookup_params).json().get('results', [])[1:]
                     
                     while True:
                         try:
                             print("\n🎶 Songs List:")
-                            for i, t in enumerate(tracks): print(f"{i+1}. {t['trackName']}")
+                            for i, t in enumerate(tracks): print(f"{i+1}. {t.get('trackName', 'Unknown')}")
                             dl_choice = ask("\n📥 'A' (All) or Numbers (eg: 1,3) (Enter: B=Back, 0=Home): ").upper()
                             bitrate = get_quality_choice()
                             
@@ -275,12 +266,16 @@ def search_song():
     while True:
         try:
             song_name = ask("\n🎵 Enter Song Name (Enter: B=Back, 0=Home): ")
-            data = requests.get(f"https://itunes.apple.com/search?term={song_name}&entity=song&limit=50&country=IN").json()
-            songs = data['results']
+            
+            # 🔴 FIX 1: URL Safe Search (Space prechanaiyai thadukka)
+            params = {"term": song_name, "entity": "song", "limit": 50, "country": "IN"}
+            data = requests.get("https://itunes.apple.com/search", params=params).json()
+            songs = data.get('results', [])
             
             while True:
                 try:
-                    idx = paginate_list(songs, lambda i, t: f"{i+1}. {t['trackName']} - {t['artistName']}", "Songs")
+                    # 🔴 FIX 2: Safe Key Lookups
+                    idx = paginate_list(songs, lambda i, t: f"{i+1}. {t.get('trackName', 'Unknown')} - {t.get('artistName', 'Unknown')}", "Songs")
                     if idx is None: raise GoBack()
                     
                     bitrate = get_quality_choice()
@@ -312,7 +307,9 @@ def main():
             print("\n👋 Process interrupted. Exiting App...")
             break
         except Exception as e:
-            print(f"\n❌ An error occurred. Returning to Home Menu.")
+            # 🔴 FIX 3: Actual error-ah screen-la print panna porom!
+            print(f"\n❌ ALERT! Code Bug/Error: {e}")
+            print("🏠 Returning to Home Menu...")
             
 if __name__ == "__main__":
     main()
