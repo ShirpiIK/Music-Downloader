@@ -2,6 +2,7 @@ import os
 import requests
 import readline
 from ytmusicapi import YTMusic
+import random # Idhai code-oda mela import os pakkathula add pannidunga (irundhalum paravailla)
 
 DOWNLOAD_PATH = "/data/data/com.termux/files/home/storage/shared/Download/Myfy"
 os.makedirs(DOWNLOAD_PATH, exist_ok=True)
@@ -10,20 +11,30 @@ class GoHome(Exception): pass
 class GoBack(Exception): pass
 
 # 🔥 ANTI-CRASH SHIELD: Safe API Request Function 🔥
+
 def fetch_json(url, params=None):
-    # Browser madhiri vesham poda User-Agent add pandrom
+    # Bot ippa random-aah pudhu pudhu vesham podum
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15',
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Mobile/15E148 Safari/604.1'
+    ]
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 MyfyBot/3.0'
+        'User-Agent': random.choice(user_agents),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
     }
     try:
         res = requests.get(url, params=params, headers=headers, timeout=15)
-        # 200 OK vandha mattum JSON padikkanum, illana thooki podanum
         if res.status_code == 200:
             return res.json()
+        else:
+            print(f"⚠️ [Debug] API Server returned Status Code: {res.status_code}")
+            return None
+    except Exception as e:
+        print(f"⚠️ [Debug] API Fetch Failed: {e}")
         return None
-    except Exception:
-        return None
-
+        
 def ask(prompt_text):
     ans = input(prompt_text).strip().upper()
     if ans == '0': raise GoHome()
