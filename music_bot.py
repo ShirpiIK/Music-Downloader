@@ -9,6 +9,21 @@ os.makedirs(DOWNLOAD_PATH, exist_ok=True)
 class GoHome(Exception): pass
 class GoBack(Exception): pass
 
+# 🔥 ANTI-CRASH SHIELD: Safe API Request Function 🔥
+def fetch_json(url, params=None):
+    # Browser madhiri vesham poda User-Agent add pandrom
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 MyfyBot/3.0'
+    }
+    try:
+        res = requests.get(url, params=params, headers=headers, timeout=15)
+        # 200 OK vandha mattum JSON padikkanum, illana thooki podanum
+        if res.status_code == 200:
+            return res.json()
+        return None
+    except Exception:
+        return None
+
 def ask(prompt_text):
     ans = input(prompt_text).strip().upper()
     if ans == '0': raise GoHome()
@@ -146,12 +161,13 @@ def download_track(track, bitrate):
     
     lrc_path = f"{DOWNLOAD_PATH}/{title}_{bitrate}k.lrc"
     try:
-        lrc_data = requests.get("https://lrclib.net/api/search", params={"track_name": lrc_search_title, "artist_name": c_artist}).json()
+        # Safe JSON Fetch used here!
+        lrc_data = fetch_json("https://lrclib.net/api/search", {"track_name": lrc_search_title, "artist_name": c_artist})
         
         if not lrc_data or len(lrc_data) == 0:
-            lrc_data = requests.get("https://lrclib.net/api/search", params={"track_name": c_title, "artist_name": c_artist}).json()
+            lrc_data = fetch_json("https://lrclib.net/api/search", {"track_name": c_title, "artist_name": c_artist})
 
-        if isinstance(lrc_data, list) and len(lrc_data) > 0:
+        if lrc_data and isinstance(lrc_data, list) and len(lrc_data) > 0:
             synced_only_data = [item for item in lrc_data if item.get('syncedLyrics')]
             
             if not synced_only_data:
@@ -199,7 +215,7 @@ def download_track(track, bitrate):
         else:
             print("⚠️ Lyrics not found in database.")
     except Exception as e:
-        print(f"❌ Lyrics API Error: {e}. Skipping lyrics.")
+        print(f"❌ Lyrics Error: Skipped.")
 
     if os.path.exists("temp.mp3"): os.remove("temp.mp3")
     if os.path.exists("cover.jpg"): os.remove("cover.jpg")
@@ -229,21 +245,23 @@ def search_movie():
         try:
             movie_name = ask("\n🎬 Enter Movie Name (Enter: B=Back, 0=Home): ")
             
-            # 🔴 FIX 1: URL Safe Search 
-            params = {"term": movie_name, "entity": "album", "limit": 50, "country": "IN"}
-            data = requests.get("https://itunes.apple.com/search", params=params).json()
-            albums = data.get('results', [])
+            # Safe JSON Fetch used here!
+            data = fetch_json("https://itunes.apple.com/search", {"term": movie_name, "entity": "album", "limit": 50, "country": "IN"})
+            albums = data.get('results', []) if data else []
             
+            if not albums:
+                print("❌ No results found or API blocked. Try again.")
+                continue
+                
             while True:
                 try:
-                    # 🔴 FIX 2: Safe Key Lookups (Missing Artist Name prechanaiyai thadukka)
                     idx = paginate_list(albums, lambda i, a: f"{i+1}. {a.get('collectionName', 'Unknown')} ({a.get('artistName', 'Unknown')})", "Albums")
                     if idx is None: raise GoBack()
                     
                     album_id = albums[idx]['collectionId']
                     
-                    lookup_params = {"id": album_id, "entity": "song", "country": "IN"}
-                    tracks = requests.get("https://itunes.apple.com/lookup", params=lookup_params).json().get('results', [])[1:]
+                    tracks_data = fetch_json("https://itunes.apple.com/lookup", {"id": album_id, "entity": "song", "country": "IN"})
+                    tracks = tracks_data.get('results', [])[1:] if tracks_data else []
                     
                     while True:
                         try:
@@ -267,14 +285,16 @@ def search_song():
         try:
             song_name = ask("\n🎵 Enter Song Name (Enter: B=Back, 0=Home): ")
             
-            # 🔴 FIX 1: URL Safe Search (Space prechanaiyai thadukka)
-            params = {"term": song_name, "entity": "song", "limit": 50, "country": "IN"}
-            data = requests.get("https://itunes.apple.com/search", params=params).json()
-            songs = data.get('results', [])
+            # Safe JSON Fetch used here!
+            data = fetch_json("https://itunes.apple.com/search", {"term": song_name, "entity": "song", "limit": 50, "country": "IN"})
+            songs = data.get('results', []) if data else []
             
+            if not songs:
+                print("❌ No results found or API blocked. Try again.")
+                continue
+                
             while True:
                 try:
-                    # 🔴 FIX 2: Safe Key Lookups
                     idx = paginate_list(songs, lambda i, t: f"{i+1}. {t.get('trackName', 'Unknown')} - {t.get('artistName', 'Unknown')}", "Songs")
                     if idx is None: raise GoBack()
                     
@@ -307,9 +327,9 @@ def main():
             print("\n👋 Process interrupted. Exiting App...")
             break
         except Exception as e:
-            # 🔴 FIX 3: Actual error-ah screen-la print panna porom!
-            print(f"\n❌ ALERT! Code Bug/Error: {e}")
+            print(f"\n❌ ALERT! Critical Error: {e}")
             print("🏠 Returning to Home Menu...")
             
 if __name__ == "__main__":
     main()
+                
