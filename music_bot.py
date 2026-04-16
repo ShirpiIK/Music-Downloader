@@ -80,7 +80,6 @@ def get_quality_choice():
     q_choice = ask("Option (1-5) (Enter: B=Back, 0=Home): ")
     q_map = {'1': '128', '2': '160', '3': '192', '4': '256', '5': '320'}
     return q_map.get(q_choice, '192')
-
 def download_track(track, bitrate):
     title = track.get('trackName', 'Unknown').replace('"', '').replace('/', '')
     artist = track.get('artistName', 'Unknown').replace('"', '').replace('/', '')
@@ -89,64 +88,66 @@ def download_track(track, bitrate):
     
     c_title = title.split('(')[0].split('[')[0].split('-')[0].strip()
     c_artist = artist.split(',')[0].split('&')[0].strip()
-    c_album = album.split('(')[0].split('[')[0].split('-')[0].strip()
     
-    known_langs = ['tamil', 'telugu', 'hindi', 'malayalam', 'kannada', 'marathi', 'bengali', 'english']
+    # 🎯 TARGET LANGUAGE DETECTION
+    known_langs = ['tamil', 'telugu', 'hindi', 'malayalam', 'kannada']
     target_lang = ""
     for lang in known_langs:
         if lang in album.lower() or lang in title.lower():
             target_lang = lang
             break
     
+    # Inime "Tamil" keyword-ah search base-la force pannuvaom
     search_base = f"{c_title} {c_artist}"
     if target_lang:
-        search_base += f" {target_lang}"
+        search_base = f"{c_title} {target_lang} {c_artist}"
     
     duration_ms = track.get('trackTimeMillis', 0)
     target_sec = int(duration_ms / 1000)
     
-    print(f"\n⏳ Downloading Pure Audio: {title} (Target: {target_sec}s)...")
+    print(f"\n⏳ Searching for: {c_title} ({target_lang if target_lang else 'Unknown'} Version)...")
     
     if cover_url:
-        try:
-            open("cover.jpg", "wb").write(requests.get(cover_url).content)
+        try: open("cover.jpg", "wb").write(requests.get(cover_url).content)
         except: pass
     
     ytmusic = YTMusic()
     try:
-        print(f"🔍 Scanning YouTube Music for EXACT match...")
-        search_results = ytmusic.search(search_base, filter="songs", limit=10)
-        
+        search_results = ytmusic.search(search_base, filter="songs", limit=15)
         video_id = None
+        
         if search_results:
             for result in search_results:
                 res_sec = result.get('duration_seconds')
-                if not res_sec and result.get('duration'):
-                    try:
-                        parts = str(result['duration']).split(':')
-                        if len(parts) == 2: res_sec = int(parts[0])*60 + int(parts[1])
-                        elif len(parts) == 3: res_sec = int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
-                    except: pass
+                res_album = result.get('album', {}).get('name', '').lower() if result.get('album') else ""
+                res_title = result.get('title', '').lower()
                 
-                if res_sec and abs(res_sec - target_sec) <= 4:
-                    res_album = result.get('album', {}).get('name', '').lower() if result.get('album') else ''
-                    res_title = result.get('title', '').lower()
+                # Check 1: Duration Match (+/- 5s)
+                if res_sec and abs(res_sec - target_sec) <= 5:
                     
+                    # Check 2: STRICT LANGUAGE MATCH
                     if target_lang:
-                        if target_lang in res_album or target_lang in res_title:
+                        # Video title-layo illa album name-layo language irukanum
+                        if target_lang in res_title or target_lang in res_album:
                             video_id = result['videoId']
-                            print(f"✅ Strict {target_lang.capitalize()} Audio Match Found! (Duration: {res_sec}s)")
+                            print(f"✅ Exact {target_lang.capitalize()} Match Found: {result['title']}")
                             break
                     else:
                         video_id = result['videoId']
-                        print(f"✅ Exact Audio ID Match Found! (Duration: {res_sec}s)")
                         break
         
         if video_id:
             yt_url = f"https://music.youtube.com/watch?v={video_id}"
-            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' '{yt_url}'")
+            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k -o 'temp.mp3' '{yt_url}'")
         else:
-            print("⚠️ API strict match missed. Trying standard YouTube search...")
+            # Plan B: Direct YouTube Search with Language Tag
+            print(f"⚠️ API filter failed. Trying direct YouTube Search with Language Tag...")
+            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --match-filter \"duration >= {target_sec-5} & duration <= {target_sec+5}\" --max-downloads 1 -o 'temp.mp3' 'ytsearch20:{search_base} official audio'")
+            
+    except Exception as e:
+        print(f"❌ Error during search: {e}")
+
+    # [Baki code FFmpeg conversion and tagging logic apdiye maintain pannunga...]
             min_d = target_sec - 4
             max_d = target_sec + 4
             strict_filter = f'--match-filter "duration >= {min_d} & duration <= {max_d}"'
