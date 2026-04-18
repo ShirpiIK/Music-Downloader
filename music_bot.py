@@ -11,7 +11,6 @@ os.makedirs(DOWNLOAD_PATH, exist_ok=True)
 class GoHome(Exception): pass
 class GoBack(Exception): pass
 
-# 🔥 APPLE WAF BYPASS SHIELD 🔥
 def fetch_json(url, params=None):
     user_agents = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -88,13 +87,11 @@ def get_quality_choice():
     return q_map.get(q_choice, '192')
 
 def download_track(track, bitrate):
-    # Full Exact names from iTunes (with all brackets)
     title = track.get('trackName', 'Unknown').replace('"', '').replace('/', '')
     artist = track.get('artistName', 'Unknown').replace('"', '').replace('/', '')
     album = track.get('collectionName', 'Unknown').replace('"', '').replace('/', '')
     cover_url = track.get('artworkUrl100', '').replace('100x100bb', '600x600bb')
     
-    # Cleaned names strictly for LRCLIB search
     c_title = title.split('(')[0].split('[')[0].split('-')[0].strip()
     c_artist = artist.split(',')[0].split('&')[0].strip()
     
@@ -105,7 +102,6 @@ def download_track(track, bitrate):
             target_lang = lang
             break
     
-    # 🔥 FIX: User Logic - Using EXACT iTunes Title for Audio Search
     search_base = f"{title} {c_artist}"
     if target_lang and target_lang not in title.lower():
         search_base += f" {target_lang}"
@@ -170,17 +166,23 @@ def download_track(track, bitrate):
     os.system(f"termux-media-scan '{final_path}'")
     
     # ---------------------------------------------------------
-    # 🔥 ULTIMATE STRICT LYRICS MATCHER 🔥
+    # 🔥 ULTIMATE SCENARIO-BASED LYRICS MATCHER (v3.5) 🔥
     # ---------------------------------------------------------
-    lrc_search_title = f"{c_title} {target_lang}".strip() if target_lang else c_title
-    print(f"🔍 Searching for purely synced lyrics ({lrc_search_title})...")
-    
+    print(f"🔍 Searching for synced lyrics ({title})...")
     lrc_path = f"{DOWNLOAD_PATH}/{title}_{bitrate}k.lrc"
+    
     try:
-        lrc_data = fetch_json("https://lrclib.net/api/search", {"track_name": lrc_search_title, "artist_name": c_artist})
+        # Step 1: Exact iTunes Title + Exact Artist (Best accuracy)
+        lrc_data = fetch_json("https://lrclib.net/api/search", {"track_name": title, "artist_name": c_artist})
         
+        # Step 2: Fallback Clean Title + Exact Artist (Scenario 2 & 3)
         if not lrc_data or len(lrc_data) == 0:
             lrc_data = fetch_json("https://lrclib.net/api/search", {"track_name": c_title, "artist_name": c_artist})
+
+        # 🔥 Step 3: Extreme Fallback - Title ONLY (Solves "Artist Mismatch Bug") 🔥
+        if not lrc_data or len(lrc_data) == 0:
+            print("⚠️ Artist match failed. Searching by Track Name only...")
+            lrc_data = fetch_json("https://lrclib.net/api/search", {"track_name": c_title})
 
         if lrc_data and isinstance(lrc_data, list) and len(lrc_data) > 0:
             synced_only_data = [item for item in lrc_data if item.get('syncedLyrics')]
@@ -190,47 +192,39 @@ def download_track(track, bitrate):
             else:
                 selected_lrc = None
                 
+                # Priority 1: Check Language in Title OR Album + Duration
                 if target_lang:
-                    # STRICT MODE: Must match language and duration
                     for item in synced_only_data:
                         item_album = item.get('albumName', '').lower() if item.get('albumName') else ''
                         item_title = item.get('trackName', '').lower() if item.get('trackName') else ''
                         item_dur = item.get('duration', 0)
                         
-                        if (target_lang in item_album or target_lang in item_title) and (item_dur and abs(item_dur - target_sec) <= 5):
+                        if (target_lang in item_album or target_lang in item_title) and (item_dur and abs(item_dur - target_sec) <= 8):
                             selected_lrc = item
                             break
-                    
-                    if not selected_lrc:
-                        for item in synced_only_data:
-                            item_album = item.get('albumName', '').lower() if item.get('albumName') else ''
-                            item_title = item.get('trackName', '').lower() if item.get('trackName') else ''
-                            if target_lang in item_album or target_lang in item_title:
-                                selected_lrc = item
-                                break
-                else:
-                    # NORMAL MODE: Just match duration
+                            
+                # Priority 2: Standard Duration Match (+/- 8s)
+                if not selected_lrc:
                     for item in synced_only_data:
                         item_dur = item.get('duration', 0)
-                        if item_dur and abs(item_dur - target_sec) <= 5:
+                        if item_dur and abs(item_dur - target_sec) <= 8:
                             selected_lrc = item
                             break
-                    
-                    if not selected_lrc:
-                        selected_lrc = synced_only_data[0]
+                
+                # Priority 3: Last Resort
+                if not selected_lrc:
+                    print("⚠️ Strict match failed. Taking the best available synced lyric...")
+                    selected_lrc = synced_only_data[0]
                         
                 if selected_lrc:
                     open(lrc_path, 'w', encoding='utf-8').write(selected_lrc['syncedLyrics'])
                     os.system(f"termux-media-scan '{lrc_path}'")
-                    print(f"📜 {lang_display} Synced Lyrics saved successfully!")
+                    print(f"📜 Synced Lyrics saved successfully!")
                 else:
-                    if target_lang:
-                        print(f"⚠️ {lang_display} Synced Lyrics not found in database. Skipped to prevent wrong language.")
-                    else:
-                        print("⚠️ Lyrics not found in database.")
+                    print("⚠️ Lyrics not found in database.")
         else:
             print("⚠️ Lyrics not found in database.")
-    except Exception:
+    except Exception as e:
         print(f"❌ Lyrics Error: Skipped.")
 
     if os.path.exists("temp.mp3"): os.remove("temp.mp3")
@@ -260,8 +254,6 @@ def search_movie():
     while True:
         try:
             movie_name = ask("\n🎬 Enter Movie Name (Enter: B=Back, 0=Home): ")
-            
-            # 🔥 FIX: Reverted to Limit 50 as you requested!
             data = fetch_json("https://itunes.apple.com/search", {"term": movie_name, "entity": "album", "limit": 50, "country": "IN"})
             albums = data.get('results', []) if data else []
             
@@ -275,7 +267,6 @@ def search_movie():
                     if idx is None: raise GoBack()
                     
                     album_id = albums[idx]['collectionId']
-                    
                     tracks_data = fetch_json("https://itunes.apple.com/lookup", {"id": album_id, "entity": "song", "country": "IN"})
                     tracks = tracks_data.get('results', [])[1:] if tracks_data else []
                     
@@ -300,8 +291,6 @@ def search_song():
     while True:
         try:
             song_name = ask("\n🎵 Enter Song Name (Enter: B=Back, 0=Home): ")
-            
-            # 🔥 FIX: Reverted to Limit 50 as you requested!
             data = fetch_json("https://itunes.apple.com/search", {"term": song_name, "entity": "song", "limit": 50, "country": "IN"})
             songs = data.get('results', []) if data else []
             
@@ -348,4 +337,3 @@ def main():
             
 if __name__ == "__main__":
     main()
-            
