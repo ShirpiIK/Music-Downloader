@@ -1,6 +1,7 @@
 import os
 import requests
 import random
+import time
 import readline
 from ytmusicapi import YTMusic
 
@@ -10,25 +11,32 @@ os.makedirs(DOWNLOAD_PATH, exist_ok=True)
 class GoHome(Exception): pass
 class GoBack(Exception): pass
 
-# ---------------------------------------------------------
-# 🔥 ANTI-CRASH SHIELD: Safe API Request Function 🔥
-# ---------------------------------------------------------
+# 🔥 APPLE WAF BYPASS SHIELD 🔥
 def fetch_json(url, params=None):
     user_agents = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Safari/605.1.15',
         'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Mobile/15E148 Safari/604.1'
     ]
+    
+    if params is not None:
+        params['nocache'] = int(time.time() * 1000)
+        if params.get('country') == 'IN':
+            params['country'] = random.choice(['IN', 'US', 'GB']) 
+
     headers = {
         'User-Agent': random.choice(user_agents),
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.5'
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://music.apple.com/'
     }
+    
     try:
         res = requests.get(url, params=params, headers=headers, timeout=15)
-        if res.status_code == 200:
+        if res.status_code == 200 and 'newNullResponse' not in res.text:
             return res.json()
         else:
+            print(f"⚠️ [API Blocked] Switching region or use VPN...")
             return None
     except Exception:
         return None
@@ -80,15 +88,16 @@ def get_quality_choice():
     return q_map.get(q_choice, '192')
 
 def download_track(track, bitrate):
+    # Full Exact names from iTunes (with all brackets)
     title = track.get('trackName', 'Unknown').replace('"', '').replace('/', '')
     artist = track.get('artistName', 'Unknown').replace('"', '').replace('/', '')
     album = track.get('collectionName', 'Unknown').replace('"', '').replace('/', '')
     cover_url = track.get('artworkUrl100', '').replace('100x100bb', '600x600bb')
     
+    # Cleaned names strictly for LRCLIB search
     c_title = title.split('(')[0].split('[')[0].split('-')[0].strip()
     c_artist = artist.split(',')[0].split('&')[0].strip()
     
-    # 🎯 TARGET LANGUAGE DETECTION
     known_langs = ['tamil', 'telugu', 'hindi', 'malayalam', 'kannada', 'marathi', 'bengali', 'english']
     target_lang = ""
     for lang in known_langs:
@@ -96,9 +105,10 @@ def download_track(track, bitrate):
             target_lang = lang
             break
     
-    search_base = f"{c_title} {c_artist}"
-    if target_lang:
-        search_base = f"{c_title} {target_lang} {c_artist}"
+    # 🔥 FIX: User Logic - Using EXACT iTunes Title for Audio Search
+    search_base = f"{title} {c_artist}"
+    if target_lang and target_lang not in title.lower():
+        search_base += f" {target_lang}"
     
     duration_ms = track.get('trackTimeMillis', 0)
     target_sec = int(duration_ms / 1000)
@@ -142,13 +152,13 @@ def download_track(track, bitrate):
         
         if video_id:
             yt_url = f"https://music.youtube.com/watch?v={video_id}"
-            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' '{yt_url}'")
+            os.system(f"yt-dlp --newline -x --audio-format mp3 --audio-quality {bitrate}k --max-downloads 1 -o 'temp.mp3' '{yt_url}'")
         else:
             print("⚠️ API strict match missed. Trying standard YouTube search...")
-            os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --match-filter \"duration >= {target_sec-5} & duration <= {target_sec+5}\" --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} official audio'")
+            os.system(f"yt-dlp --newline -x --audio-format mp3 --audio-quality {bitrate}k --match-filter \"duration >= {target_sec-5} & duration <= {target_sec+5}\" --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} official audio'")
     except Exception as e:
         print(f"⚠️ API Error ({e}). Trying standard YouTube search...")
-        os.system(f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k --match-filter \"duration >= {target_sec-5} & duration <= {target_sec+5}\" --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} official audio'")
+        os.system(f"yt-dlp --newline -x --audio-format mp3 --audio-quality {bitrate}k --match-filter \"duration >= {target_sec-5} & duration <= {target_sec+5}\" --max-downloads 1 -o 'temp.mp3' 'ytsearch15:{search_base} official audio'")
 
     if not os.path.exists("temp.mp3"):
         print(f"❌ Error: Song download fail aagiduchu.")
@@ -234,7 +244,7 @@ def download_url():
         
         print(f"\n⏳ Analyzing URL and starting download...")
         output_template = f"{DOWNLOAD_PATH}/%(title)s_{bitrate}k.%(ext)s"
-        cmd = (f"yt-dlp -x --audio-format mp3 --audio-quality {bitrate}k "
+        cmd = (f"yt-dlp --newline -x --audio-format mp3 --audio-quality {bitrate}k "
                f"--embed-thumbnail --add-metadata "
                f"-o '{output_template}' '{url}'")
         os.system(cmd)
@@ -251,8 +261,8 @@ def search_movie():
         try:
             movie_name = ask("\n🎬 Enter Movie Name (Enter: B=Back, 0=Home): ")
             
-            # Limited to 20 to avoid rate limits
-            data = fetch_json("https://itunes.apple.com/search", {"term": movie_name, "entity": "album", "limit": 20, "country": "IN"})
+            # 🔥 FIX: Reverted to Limit 50 as you requested!
+            data = fetch_json("https://itunes.apple.com/search", {"term": movie_name, "entity": "album", "limit": 50, "country": "IN"})
             albums = data.get('results', []) if data else []
             
             if not albums:
@@ -291,7 +301,8 @@ def search_song():
         try:
             song_name = ask("\n🎵 Enter Song Name (Enter: B=Back, 0=Home): ")
             
-            data = fetch_json("https://itunes.apple.com/search", {"term": song_name, "entity": "song", "limit": 25, "country": "IN"})
+            # 🔥 FIX: Reverted to Limit 50 as you requested!
+            data = fetch_json("https://itunes.apple.com/search", {"term": song_name, "entity": "song", "limit": 50, "country": "IN"})
             songs = data.get('results', []) if data else []
             
             if not songs:
@@ -337,3 +348,4 @@ def main():
             
 if __name__ == "__main__":
     main()
+            
