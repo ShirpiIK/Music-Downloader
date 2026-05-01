@@ -45,7 +45,7 @@ Clone this repository and start the application:
 
 ```bash
 git clone https://github.com/ShirpiIK/Music-Downloader
-cd music_bot.py
+cd Music-Downloader
 python music_bot.py
 ```
 
